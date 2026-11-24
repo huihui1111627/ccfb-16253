@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>注册中心自我保护模拟</title>
+<style>
+  :root {
+    --bg:#0f1420; --panel:#171e2e; --panel2:#1d2740; --border:#2a3650;
+    --text:#dce4f2; --muted:#8595b3; --green:#35c46d; --yellow:#e8b93e;
+    --red:#e5484d; --blue:#4d8dff; --purple:#a06bff; --cyan:#3fc6d8;
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",monospace,"Segoe UI",sans-serif; font-size:13px; }
+  header { padding:12px 20px; background:var(--panel); border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0; }
+  select,button { background:var(--panel2); color:var(--text); border:1px solid var(--border);
+    border-radius:6px; padding:6px 10px; font-size:13px; cursor:pointer; }
+  select:focus,button:focus { outline:1px solid var(--blue); }
+  button.active { border-color:var(--blue); color:var(--blue); }
+  .layout { display:grid; grid-template-columns: 340px 1fr 360px; gap:12px; padding:12px; }
+  .panel { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:12px; }
+  .panel h2 { font-size:13px; margin:0 0 10px; color:var(--muted); font-weight:600; letter-spacing:.5px; }
+  .metrics { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .metric { background:var(--panel2); border-radius:8px; padding:8px 10px; }
+  .metric .v { font-size:20px; font-weight:700; }
+  .metric .k { color:var(--muted); font-size:11px; margin-top:2px; }
+  .v.red{color:var(--red)} .v.green{color:var(--green)} .v.yellow{color:var(--yellow)} .v.blue{color:var(--blue)}
+  .reg { background:var(--panel2); border-radius:8px; padding:10px; margin-bottom:8px; border-left:3px solid var(--border); }
+  .reg.on { border-left-color:var(--red); background:#2a1a22; }
+  .reg.deg { border-left-color:var(--yellow); }
+  .reg .name { font-weight:700; display:flex; justify-content:space-between; }
+  .badge { font-size:11px; padding:2px 8px; border-radius:10px; }
+  .badge.prot { background:#5c2130; color:#ff9aa0; }
+  .badge.deg { background:#4a3c15; color:#ffd97a; }
+  .badge.ok { background:#143524; color:#7de2a6; }
+  .bar { height:6px; background:#0c1120; border-radius:3px; margin-top:6px; overflow:hidden; }
+  .bar > i { display:block; height:100%; background:var(--green); transition:width .2s; }
+  .bar > i.low { background:var(--red); } .bar > i.mid { background:var(--yellow); }
+  .reason { color:var(--muted); font-size:11px; margin-top:6px; line-height:1.5; }
+  table { width:100%; border-collapse:collapse; font-size:12px; }
+  th,td { text-align:left; padding:4px 6px; border-bottom:1px solid var(--border); white-space:nowrap; }
+  th { color:var(--muted); font-weight:500; position:sticky; top:0; background:var(--panel); }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; margin-right:5px; }
+  .dot.g{background:var(--green)} .dot.y{background:var(--yellow)} .dot.r{background:var(--red)} .dot.gray{background:#4a5670}
+  .dc-head { display:flex; gap:14px; flex-wrap:wrap; margin-bottom:8px; font-size:12px; color:var(--muted); }
+  .dc-head b { color:var(--text); }
+  .legend { display:flex; gap:12px; font-size:11px; color:var(--muted); margin:8px 0; flex-wrap:wrap; }
+  .timeline { max-height:220px; overflow:auto; font-size:11.5px; }
+  .timeline div { padding:4px 0; border-bottom:1px dashed var(--border); line-height:1.5; }
+  .t-enter{color:#ff9aa0} .t-exit{color:#7de2a6} .t-fault{color:#ffd97a}
+  input[type=range]{width:100%; accent-color:var(--blue);}
+  .controls { display:flex; align-items:center; gap:10px; }
+  .clock { font-variant-numeric:tabular-nums; color:var(--cyan); font-weight:700; min-width:86px; }
+  .caller { background:var(--panel2); border-radius:8px; padding:8px 10px; margin-bottom:8px; font-size:12px; }
+  .caller .row { display:flex; justify-content:space-between; margin:2px 0; }
+  .cache-list { font-size:11px; color:var(--muted); max-height:60px; overflow:auto; margin-top:4px; }
+  .filters { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+  .inst-wrap { max-height:520px; overflow:auto; }
+  .mode-note { font-size:11px; color:var(--muted); }
+  .compare td.good{color:var(--green)} .compare td.bad{color:var(--red)}
+  .fault-banner { background:#3d2412; border:1px solid #7a4c1f; color:#ffcf99;
+    padding:8px 12px; border-radius:8px; margin-bottom:10px; font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>注册中心自我保护机制模拟</h1>
+  <label>剧本
+    <select id="scenario"></select>
+  </label>
+  <div>
+    <button id="modeProtected" class="active">自我保护(新模式)</button>
+    <button id="modeLegacy">一刀切(旧模式)</button>
+  </div>
+  <div class="controls">
+    <button id="playBtn">▶ 播放</button>
+    <button id="stepBtn">⏭ 单步</button>
+    <select id="speed">
+      <option value="500">0.5x</option>
+      <option value="250" selected>1x</option>
+      <option value="80">3x</option>
+      <option value="20">8x</option>
+    </select>
+    <input type="range" id="seek" min="0" max="0" value="0">
+    <span class="clock" id="clock">0.0s</span>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- 左列:指标 + 注册中心 -->
+  <div>
+    <div class="panel">
+      <h2>核心指标(当前时刻累计)</h2>
+      <div class="metrics">
+        <div class="metric"><div class="v blue" id="mTotal">0</div><div class="k">总请求</div></div>
+        <div class="metric"><div class="v red" id="mFail">0</div><div class="k">失败请求</div></div>
+        <div class="metric"><div class="v yellow" id="mEmpty">0</div><div class="k">空列表致败</div></div>
+        <div class="metric"><div class="v" id="mEvict">0</div><div class="k">摘除次数</div></div>
+        <div class="metric"><div class="v red" id="mWrong">0</div><div class="k">误摘活实例</div></div>
+        <div class="metric"><div class="v" id="mInbox">0</div><div class="k">节点最大排队</div></div>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:var(--muted)" id="mNet"></div>
+    </div>
+
+    <div class="panel">
+      <h2>注册中心集群(心跳比例 / 保护状态)</h2>
+      <div id="registries"></div>
+    </div>
+
+    <div class="panel">
+      <h2>事件时间线</h2>
+      <div class="timeline" id="timeline"></div>
+    </div>
+  </div>
+
+  <!-- 中列:机房实例心跳 -->
+  <div>
+    <div id="faultBanner"></div>
+    <div class="panel">
+      <h2>各机房实例心跳情况(3000 实例)</h2>
+      <div class="dc-head" id="dcHead"></div>
+      <div class="legend">
+        <span><i class="dot g"></i>心跳正常</span>
+        <span><i class="dot y"></i>心跳延迟(1~3s 未确认)</span>
+        <span><i class="dot r"></i>超时/宕机</span>
+        <span><i class="dot gray"></i>待重注册</span>
+      </div>
+      <div class="filters" id="dcFilter"></div>
+      <div class="inst-wrap">
+        <table>
+          <thead><tr><th>实例</th><th>服务</th><th>机房</th><th>交换机</th><th>状态</th><th>心跳年龄</th></tr></thead>
+          <tbody id="instBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右列:调用方 + 对比 -->
+  <div>
+    <div class="panel">
+      <h2>调用方手里的实例列表</h2>
+      <div id="callers"></div>
+    </div>
+    <div class="panel">
+      <h2>五剧本双模式对比(独立运行汇总)</h2>
+      <table class="compare">
+        <thead><tr><th>剧本</th><th>新失败</th><th>旧失败</th><th>新误摘</th><th>旧误摘</th></tr></thead>
+        <tbody id="compareBody"></tbody>
+      </table>
+      <div class="mode-note" style="margin-top:8px">
+        屏蔽耗时等完整指标见命令行 <code>registrysim compare</code>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+let scenarios = [], current = null, report = null, snaps = [];
+let idx = 0, timer = null, mode = 'protected', dcFilter = 'all';
+const tickSec = t => (t / 10).toFixed(1) + 's';
+const SnapshotInterval = 20; // 与后端 sim.SnapshotInterval 对齐(2s 一个快照)
+
+async function init() {
+  scenarios = await fetch('/api/scenarios').then(r => r.json());
+  const sel = $('scenario');
+  scenarios.forEach(s => sel.add(new Option(s.name, s.id)));
+  sel.onchange = loadRun;
+  $('modeProtected').onclick = () => setMode('protected');
+  $('modeLegacy').onclick = () => setMode('legacy');
+  $('playBtn').onclick = togglePlay;
+  $('stepBtn').onclick = () => { pause(); step(); };
+  $('seek').oninput = e => { idx = +e.target.value; render(); };
+  ['all','dc1','dc2','dc3'].forEach(dc => {
+    const b = document.createElement('button');
+    b.textContent = dc === 'all' ? '全部机房' : dc;
+    b.dataset.dc = dc;
+    if (dc === 'all') b.classList.add('active');
+    b.onclick = () => {
+      dcFilter = dc;
+      document.querySelectorAll('#dcFilter button').forEach(x => x.classList.toggle('active', x.dataset.dc === dc));
+      render();
+    };
+    $('dcFilter').append(b);
+  });
+  // URL 参数直达:?scenario=hb_flap&mode=protected&t=400
+  const p = urlParams();
+  if (p.get('scenario')) sel.value = p.get('scenario');
+  if (p.get('mode') === 'legacy') { mode = 'legacy'; }
+  $('modeProtected').classList.toggle('active', mode === 'protected');
+  $('modeLegacy').classList.toggle('active', mode === 'legacy');
+  loadCompare();
+  await loadRun();
+  const t = parseInt(p.get('t') || '0', 10);
+  if (t > 0) {
+    idx = Math.min(snaps.length - 1, Math.max(0, Math.round(t / SnapshotInterval)));
+    $('seek').value = idx;
+    render();
+  }
+}
+
+// URL 直达参数:?scenario=hb_flap&mode=protected&t=400
+function urlParams() {
+  return new URLSearchParams(location.search);
+}
+
+async function loadCompare() {
+  const rows = await fetch('/api/compare').then(r => r.json());
+  $('compareBody').innerHTML = rows.map(r => `
+    <tr><td>${r.ScenarioName}</td>
+      <td class="${r.NewFailed <= r.OldFailed ? 'good' : 'bad'}">${r.NewFailed}</td>
+      <td class="${r.OldFailed >= r.NewFailed ? 'bad' : 'good'}">${r.OldFailed}</td>
+      <td class="${r.NewWrongEvict === 0 ? 'good' : 'bad'}">${r.NewWrongEvict}</td>
+      <td class="${r.OldWrongEvict === 0 ? 'good' : 'bad'}">${r.OldWrongEvict}</td>
+    </tr>`).join('');
+}
+
+function setMode(m) {
+  mode = m;
+  $('modeProtected').classList.toggle('active', m === 'protected');
+  $('modeLegacy').classList.toggle('active', m === 'legacy');
+  loadRun();
+}
+
+async function loadRun() {
+  pause();
+  const id = $('scenario').value || scenarios[0].id;
+  report = await fetch(`/api/run?scenario=${id}&mode=${mode}`).then(r => r.json());
+  snaps = report.Snapshots;
+  idx = 0;
+  $('seek').max = snaps.length - 1;
+  buildStaticTimeline();
+  render();
+}
+function togglePlay() {
+  if (timer) { pause(); return; }
+  $('playBtn').textContent = '⏸ 暂停';
+  const speed = +$('speed').value;
+  timer = setInterval(() => {
+    if (idx >= snaps.length - 1) { pause(); return; }
+    idx++; step();
+  }, speed);
+}
+function pause() {
+  clearInterval(timer); timer = null;
+  $('playBtn').textContent = '▶ 播放';
+}
+function step() {
+  $('seek').value = idx;
+  render();
+}
+
+function buildStaticTimeline() {
+  // 自我保护进入/退出事件直接取报告(Go 结构体字段为大写驼峰)
+  window._ptLines = (report.ProtectionTimeline || []).map(p => ({
+    t: p.Tick,
+    cls: p.Enter ? 't-enter' : 't-exit',
+    txt: `${p.NodeID} ${p.Enter ? '进入' : '退出'}自我保护 — ${p.Reason}`
+  }));
+}
+
+function render() {
+  const s = snaps[idx];
+  if (!s) return;
+  $('clock').textContent = tickSec(s.tick);
+  renderMetrics(s);
+  renderRegistries(s);
+  renderFaultBanner(s);
+  renderDCHead(s);
+  renderInstances(s);
+  renderCallers(s);
+  renderTimeline(s);
+}
+
+function renderMetrics(s) {
+  const m = s.metrics;
+  $('mTotal').textContent = m.totalCalls;
+  $('mFail').textContent = m.failedCalls;
+  $('mEmpty').textContent = m.emptyListFail;
+  $('mEvict').textContent = m.evictionTotal;
+  $('mWrong').textContent = m.wrongEvictions;
+  $('mInbox').textContent = s.peakInbox;
+  $('mNet').textContent = `网络累计:发送 ${m.sentMsgs} 条,故障丢弃 ${m.droppedMsgs} 条 · 当前排队 ${s.maxInbox}`;
+}
+
+function renderRegistries(s) {
+  $('registries').innerHTML = s.registries.map(r => {
+    const pct = (r.ratio * 100).toFixed(1);
+    const cls = r.ratio < 0.85 ? 'low' : r.ratio < 0.95 ? 'mid' : '';
+    const state = r.protected
+      ? '<span class="badge prot">自我保护中</span>'
+      : r.degraded ? '<span class="badge deg">节点降级</span>'
+      : '<span class="badge ok">正常</span>';
+    return `<div class="reg ${r.protected?'on':''} ${r.degraded?'deg':''}">
+      <div class="name"><span>${r.id}</span>${state}</div>
+      <div style="color:var(--muted);margin-top:4px">
+        心跳比例 <b style="color:var(--text)">${pct}%</b>
+        (实际 ${r.actual} / 期望 ${r.expected}) · 直收 ${r.directHB} · 已知 ${r.known} · 已摘 ${r.evicted} · 排队 ${r.inbox}
+      </div>
+      <div class="bar"><i class="${cls}" style="width:${Math.min(100,pct)}%"></i></div>
+      ${r.reason ? `<div class="reason">${r.reason}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function renderFaultBanner(s) {
+  if (!s.faults.length) { $('faultBanner').innerHTML = ''; return; }
+  const names = {dc_down:'机房分区', switch_down:'交换机故障', hb_flap:'心跳平面抖动', node_lossy:'节点网络差'};
+  $('faultBanner').innerHTML = '<div class="fault-banner">⚠ 当前生效故障:' +
+    s.faults.map(f => `${names[f.kind]||f.kind}(${f.scope})`).join('、') + '</div>';
+}
+
+function renderDCHead(s) {
+  const dcs = ['dc1','dc2','dc3'];
+  $('dcHead').innerHTML = dcs.map(dc => {
+    const list = s.instances.filter(i => i.dc === dc);
+    const healthy = list.filter(i => i.alive && i.reg && i.hbAge <= 10).length;
+    const stale = list.filter(i => i.alive && i.reg && i.hbAge > 10 && i.hbAge <= 30).length;
+    const bad = list.filter(i => !i.alive || i.hbAge > 30).length;
+    return `<span><b>${dc}</b>: <i class="dot g"></i>${healthy} <i class="dot y"></i>${stale} <i class="dot r"></i>${bad} / ${list.length}</span>`;
+  }).join('');
+}
+
+function instState(i) {
+  if (!i.alive) return ['r','已宕机'];
+  // 心跳超时优先于注册标记:故障期间实例会因收不到 ack 自我标记待重注册,
+  // 但它在注册中心视角仍然在册,超时才是用户关心的状态
+  if (i.hbAge > 30) return ['r','心跳超时'];
+  if (i.hbAge > 10) return ['y','心跳延迟'];
+  if (!i.reg) return ['gray','待重注册'];
+  return ['g','心跳正常'];
+}
+
+function renderInstances(s) {
+  let list = s.instances;
+  if (dcFilter !== 'all') list = list.filter(i => i.dc === dcFilter);
+  // 只渲染前 400 行,保证播放流畅;总数在表头说明
+  const shown = list.slice(0, 400);
+  $('instBody').innerHTML = shown.map(i => {
+    const [c, txt] = instState(i);
+    return `<tr><td>${i.id}</td><td>${i.svc}</td><td>${i.dc}</td><td>${i.sw}</td>
+      <td><i class="dot ${c}"></i>${txt}</td><td>${(i.hbAge/10).toFixed(1)}s</td></tr>`;
+  }).join('') + (list.length > 400
+    ? `<tr><td colspan="6" style="color:var(--muted)">仅显示前 400 行,共 ${list.length} 行(可用机房过滤)</td></tr>` : '');
+}
+
+function renderCallers(s) {
+  $('callers').innerHTML = s.callers.map(c => {
+    const open = Object.values(c.breakers).filter(v => v === 1).length;
+    const half = Object.values(c.breakers).filter(v => v === 2).length;
+    const reach = c.reachable
+      ? '<span class="badge ok">注册中心可达</span>'
+      : (c.cached === 0
+        ? '<span class="badge deg">启动初始化中</span>'
+        : '<span class="badge prot">不可达·旧缓存兜底</span>');
+    return `<div class="caller">
+      <div class="row"><b>${c.id}</b> <span style="color:var(--muted)">${c.dc} → ${c.svc}</span></div>
+      <div class="row">${reach}</div>
+      <div class="row"><span>缓存实例数</span><b>${c.cached}</b></div>
+      <div class="row"><span>熔断打开/半开</span><b>${open} / ${half}</b></div>
+      <div class="row"><span>拒绝异常空列表</span><b>${c.emptyRejected}</b></div>
+      <div class="row"><span>不可达 tick 数</span><b>${c.unreachable}</b></div>
+    </div>`;
+  }).join('');
+}
+
+function renderTimeline(s) {
+  const lines = [];
+  const names = {dc_down:'机房分区', switch_down:'交换机故障', hb_flap:'心跳平面抖动', node_lossy:'节点网络差'};
+  s.faults.forEach(f => {
+    lines.push({t:s.tick, cls:'t-fault', txt:`故障生效中:${names[f.kind]||f.kind} (${f.scope})`});
+  });
+  (window._ptLines || []).filter(p => p.Tick <= s.tick).forEach(p =>
+    lines.push({t:p.Tick, cls:p.cls, txt:p.txt}));
+  lines.sort((a,b) => b.t - a.t);
+  $('timeline').innerHTML = lines.slice(0, 40).map(l =>
+    `<div class="${l.cls}"><b>${tickSec(l.t)}</b> ${l.txt}</div>`).join('')
+    || '<div style="color:var(--muted)">暂无事件</div>';
+}
+
+init();
+</script>
+</body>
+</html>
